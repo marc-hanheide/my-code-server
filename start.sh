@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -e -x
+
+
 echo "my-code-server debian container"
 
 # Check if PORT environment variable is set, default to 8585 if not

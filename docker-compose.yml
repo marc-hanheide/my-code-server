@@ -2,18 +2,74 @@ services:
   vscode-server:
     container_name: my-code-server
     image: ghcr.io/marc-hanheide/my-code-server:main
-    ports:
-      - "8585:8586"
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
       - PORT=8586
-      - TOKEN=sometoken
+      - CLI_DATA_DIR=/home/vscodeuser/.local/share/cli_data_dir
+      - SERVER_DATA_DIR=/home/vscodeuser/.local/share/server_data_dir
+      - DOCKER_GROUP=${DOCKER_GROUP}
     #store the data in the host (optional : uncomment the volumes section and change the path)
-    #volumes:
-    #  - /home/<USER>/appdata/my-code-server:/home/vscodeuser/
+    volumes:
+      - user_data:/home/vscodeuser
+      - /var/run/docker.sock:/var/run/docker.sock
     
     #optional : add the network
     networks:
       - vscode-server-network
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - count: all
+              capabilities: [gpu]
+  zrok:
+    # currently requires the old version as the server hasn't been updated yet
+    image: openziti/zrok
+    networks:
+      - vscode-server-network
+    volumes:
+      - zrok-data:/zrok/.zrok
+    environment:
+      HOME: /zrok
+      PFXLOG_NO_JSON: "true"
+    entrypoint: []
+    tty: true
+    secrets:
+      - zrok_token
+      - zrok_basicauth
+    restart: unless-stopped
+    user: root
+        
+    command: >
+      bash -c "
+      set -xe
+      trap 'echo Stopping zrok service...; zrok release ${ZROK_NAME} || true;  zrok disable || true; echo Zrok service stopped.' EXIT;
+
+      (zrok -p disable || true);
+      zrok config set apiEndpoint ${ZROK_API_ENDPOINT} &&
+      zrok enable -d '${ZROK_ENV_NAME}' $(cat /run/secrets/zrok_token) &&
+      (zrok release ${ZROK_NAME} || true) &&
+      zrok reserve public -n ${ZROK_NAME} --basic-auth $(cat /run/secrets/zrok_basicauth) http://vscode-server:8586 &&
+      zrok share reserved ${ZROK_NAME} --headless 
+      "
+    depends_on:
+      - vscode-server
+
+    links:
+      - vscode-server
+
+volumes:
+  user_data:
+  zrok-data:
+
+secrets:
+  zrok_token:
+    environment: ZROK_TOKEN
+  zrok_basicauth:
+    environment: ZROK_BASICAUTH
 
 #optional : add the network 
 networks:
