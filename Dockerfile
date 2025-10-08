@@ -1,5 +1,5 @@
 # Use Debian latest as the base image
-FROM debian:latest
+FROM ubuntu:latest
 
 # Install necessary packages (without software-properties-common as it's no more available in Trixie)
 RUN apt-get update && apt-get install -y apt-transport-https wget curl gnupg2
